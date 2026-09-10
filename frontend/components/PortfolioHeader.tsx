@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 interface PortfolioHeaderProps {
   lastUpdated: Date | null;
   onRefresh: () => void;
@@ -9,6 +11,14 @@ export default function PortfolioHeader({
   onRefresh,
   isRefreshing,
 }: PortfolioHeaderProps) {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      onRefresh();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [onRefresh]);
+
   return (
     <header className="border-gray-200 bg-white px-6 flex items-center top-0 sticky justify-between border-b py-4">
       <div>
@@ -19,7 +29,7 @@ export default function PortfolioHeader({
 
       <div className="flex items-center gap-4">
         {lastUpdated && (
-          <span className="text-gray-500 sm:inline hidden text-sm ">
+          <span className="text-gray-500 sm:inline hidden text-sm">
             Updated{" "}
             {lastUpdated.toLocaleString("en-IN", {
               day: "2-digit",
@@ -30,6 +40,7 @@ export default function PortfolioHeader({
             })}
           </span>
         )}
+
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
