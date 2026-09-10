@@ -1,21 +1,25 @@
 export interface Stock {
-  symbol: string;
   name: string;
+  symbol: string;
+  exchange: string;
   sector: string;
-  buyPrice: number;
+  purchasePrice: number;
   quantity: number;
-  cmp: number;
+  investment: number;
+  portfolioPercent: number;
+  cmp: number | null;
+  presentValue: number | null;
+  gainLoss: number | null;
   peRatio: number | null;
-  eps: number | null;
-  latestEarningsQuarter: string | null;
-  latestEarningsCr: number | null;
+  latestEarnings: string | null;
+  error: string | null;
 }
 
-export interface StockWithMetrics extends Stock {
-  investment: number;
-  presentValue: number; // cmp * quantity
-  gainLoss: number; // presentValue - investment
-  returnPercent: number; // gainLoss / investment * 100
+export interface PortfolioApiResponse {
+  success: boolean;
+  count: number;
+  lastUpdated: string;
+  data: Stock[];
 }
 
 export interface SectorSummary {
@@ -23,7 +27,7 @@ export interface SectorSummary {
   investment: number;
   currentValue: number;
   gainLoss: number;
-  returnPercent: number | null; // null when there's no investment in this sector
+  returnPercent: number | null;
 }
 
 export interface PortfolioTotals {

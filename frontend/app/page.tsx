@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { StockWithMetrics } from "@/lib/types";
+import { useEffect, useState, useCallback } from "react";
+import { Stock } from "@/lib/types";
 import { fetchPortfolio } from "@/lib/api";
 import {
-  addCalculatedFields,
   calculatePortfolioTotals,
   calculateSectorSummaries,
+  getUniqueSectors,
 } from "@/lib/portfolioCalculations";
-import { SECTORS } from "@/lib/mockData";
 import PortfolioHeader from "@/components/PortfolioHeader";
 import PortfolioSummaryCards from "@/components/PortfolioSummaryCards";
 import SectorSummaryTable from "@/components/SectorSummaryTable";
@@ -16,59 +15,37 @@ import StockHoldingsTable from "@/components/StockHoldingsTable";
 import StockDetailPanel from "@/components/StockDetailPanel";
 
 export default function PortfolioPage() {
-  const [stocks, setStocks] = useState<StockWithMetrics[]>([]);
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [selectedStock, setSelectedStock] = useState<StockWithMetrics | null>(
-    null,
-  );
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
 
-  const loadPortfolio = async (isRefresh: boolean) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
+  const loadPortfolio = useCallback(async (isRefresh: boolean) => {
+    isRefresh ? setRefreshing(true) : setLoading(true);
     setError(null);
-
     try {
-      const rawStocks = await fetchPortfolio();
-
-      setStocks(rawStocks.map(addCalculatedFields));
+      const data = await fetchPortfolio();
+      setStocks(data);
       setLastUpdated(new Date());
     } catch {
-      setError("Could not load portfolio data. Please try again.");
+      setError(
+        "Could not load portfolio data. Is the backend running on the expected port?",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    const loadInitialPortfolio = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const rawStocks = await fetchPortfolio();
-
-        setStocks(rawStocks.map(addCalculatedFields));
-        setLastUpdated(new Date());
-      } catch {
-        setError("Could not load portfolio data. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadInitialPortfolio();
   }, []);
 
+  useEffect(() => {
+    loadPortfolio(false);
+  }, [loadPortfolio]);
+
+  const sectors = getUniqueSectors(stocks);
   const totals = calculatePortfolioTotals(stocks);
-  const sectorSummaries = calculateSectorSummaries(stocks, SECTORS);
+  const sectorSummaries = calculateSectorSummaries(stocks, sectors);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -109,7 +86,7 @@ export default function PortfolioPage() {
             <SectorSummaryTable sectors={sectorSummaries} />
             <StockHoldingsTable
               stocks={stocks}
-              sectors={SECTORS}
+              sectors={sectors}
               onSelectStock={setSelectedStock}
             />
           </>

@@ -1,11 +1,21 @@
-import { Stock } from "./types";
-import { MOCK_STOCKS } from "./mockData";
+import { Stock, PortfolioApiResponse } from "./types";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function fetchPortfolio(): Promise<Stock[]> {
-  await simulateNetworkDelay();
-  return MOCK_STOCKS;
-}
+  const res = await fetch(`${API_BASE_URL}/api/portfolio`, {
+    cache: "no-store",
+  });
 
-function simulateNetworkDelay(ms: number = 600): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-} //just for now to test the loading state
+  if (!res.ok) {
+    throw new Error("Failed to load portfolio");
+  }
+
+  const json: PortfolioApiResponse = await res.json();
+
+  if (!json.success) {
+    throw new Error("Backend reported a failure loading the portfolio");
+  }
+
+  return json.data;
+}

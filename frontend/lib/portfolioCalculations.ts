@@ -1,24 +1,11 @@
-import {
-  Stock,
-  StockWithMetrics,
-  SectorSummary,
-  PortfolioTotals,
-} from "./types";
+import { Stock, SectorSummary, PortfolioTotals } from "./types";
 
-export function addCalculatedFields(stock: Stock): StockWithMetrics {
-  const investment = stock.buyPrice * stock.quantity;
-  const presentValue = stock.cmp * stock.quantity;
-  const gainLoss = presentValue - investment;
-  const returnPercent = investment === 0 ? 0 : (gainLoss / investment) * 100;
-
-  return { ...stock, investment, presentValue, gainLoss, returnPercent };
-}
-
-export function calculatePortfolioTotals(
-  stocks: StockWithMetrics[],
-): PortfolioTotals {
+export function calculatePortfolioTotals(stocks: Stock[]): PortfolioTotals {
   const totalInvestment = stocks.reduce((sum, s) => sum + s.investment, 0);
-  const currentValue = stocks.reduce((sum, s) => sum + s.presentValue, 0);
+  const currentValue = stocks.reduce(
+    (sum, s) => sum + (s.presentValue ?? 0),
+    0,
+  );
   const totalGainLoss = currentValue - totalInvestment;
   const overallReturnPercent =
     totalInvestment === 0 ? 0 : (totalGainLoss / totalInvestment) * 100;
@@ -27,14 +14,14 @@ export function calculatePortfolioTotals(
 }
 
 export function calculateSectorSummaries(
-  stocks: StockWithMetrics[],
+  stocks: Stock[],
   sectors: string[],
 ): SectorSummary[] {
   return sectors.map((sector) => {
     const sectorStocks = stocks.filter((s) => s.sector === sector);
     const investment = sectorStocks.reduce((sum, s) => sum + s.investment, 0);
     const currentValue = sectorStocks.reduce(
-      (sum, s) => sum + s.presentValue,
+      (sum, s) => sum + (s.presentValue ?? 0),
       0,
     );
     const gainLoss = currentValue - investment;
@@ -43,4 +30,8 @@ export function calculateSectorSummaries(
 
     return { sector, investment, currentValue, gainLoss, returnPercent };
   });
+}
+
+export function getUniqueSectors(stocks: Stock[]): string[] {
+  return Array.from(new Set(stocks.map((s) => s.sector)));
 }

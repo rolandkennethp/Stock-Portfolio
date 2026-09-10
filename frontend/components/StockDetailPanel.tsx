@@ -1,8 +1,8 @@
-import { StockWithMetrics } from "@/lib/types";
+import { Stock } from "@/lib/types";
 import { formatCurrency, formatPercent } from "@/lib/format";
 
 interface StockDetailPanelProps {
-  stock: StockWithMetrics | null;
+  stock: Stock | null;
   onClose: () => void;
 }
 
@@ -12,40 +12,48 @@ export default function StockDetailPanel({
 }: StockDetailPanelProps) {
   if (!stock) return null;
 
-  const isGain = stock.gainLoss >= 0;
+  const hasLiveData = stock.cmp !== null && stock.gainLoss !== null;
+  const isGain = (stock.gainLoss ?? 0) >= 0;
+  const returnPercent =
+    stock.gainLoss !== null && stock.investment > 0
+      ? (stock.gainLoss / stock.investment) * 100
+      : null;
+
   const rows: { label: string; value: string }[] = [
-    { label: "Buy price", value: formatCurrency(stock.buyPrice) },
+    { label: "Purchase price", value: formatCurrency(stock.purchasePrice) },
     { label: "Quantity", value: String(stock.quantity) },
     { label: "Investment", value: formatCurrency(stock.investment) },
-    { label: "Current market price", value: formatCurrency(stock.cmp) },
-    { label: "Present value", value: formatCurrency(stock.presentValue) },
+    { label: "Portfolio %", value: formatPercent(stock.portfolioPercent) },
+    {
+      label: "Current market price",
+      value: stock.cmp !== null ? formatCurrency(stock.cmp) : "Unavailable",
+    },
+    {
+      label: "Present value",
+      value:
+        stock.presentValue !== null
+          ? formatCurrency(stock.presentValue)
+          : "Unavailable",
+    },
     {
       label: "P/E ratio",
       value: stock.peRatio === null ? "N/A" : String(stock.peRatio),
     },
     {
-      label: "EPS",
-      value: stock.eps === null ? "Unavailable" : `₹${stock.eps}`,
-    },
-    {
       label: "Latest earnings",
-      value:
-        stock.latestEarningsQuarter === null
-          ? "Data unavailable"
-          : `${stock.latestEarningsQuarter} · ₹${stock.latestEarningsCr?.toLocaleString("en-IN")} Cr`,
+      value: stock.latestEarnings ?? "Data unavailable",
     },
   ];
 
   return (
     <>
-      {/* Backdrop — clicking it closes the panel */}
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
 
       <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-gray-200 bg-white p-6 shadow-lg">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-gray-400">
-              {stock.symbol} · {stock.sector}
+              {stock.symbol} · {stock.exchange} · {stock.sector}
             </p>
             <h2 className="mt-1 text-xl font-semibold text-gray-900">
               {stock.name}
@@ -60,17 +68,27 @@ export default function StockDetailPanel({
           </button>
         </div>
 
-        <div
-          className={`mt-6 rounded-md p-4 ${isGain ? "bg-green-50" : "bg-red-50"}`}
-        >
-          <p className="text-xs text-gray-500">Unrealised gain/loss</p>
-          <p
-            className={`mt-1 text-xl font-semibold ${isGain ? "text-green-600" : "text-red-600"}`}
+        {hasLiveData ? (
+          <div
+            className={`mt-6 rounded-md p-4 ${isGain ? "bg-green-50" : "bg-red-50"}`}
           >
-            {formatCurrency(stock.gainLoss)} (
-            {formatPercent(stock.returnPercent)})
-          </p>
-        </div>
+            <p className="text-xs text-gray-500">Unrealised gain/loss</p>
+            <p
+              className={`mt-1 text-xl font-semibold ${isGain ? "text-green-600" : "text-red-600"}`}
+            >
+              {formatCurrency(stock.gainLoss as number)}
+              {returnPercent !== null && ` (${formatPercent(returnPercent)})`}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-md bg-amber-50 p-4">
+            <p className="text-sm text-amber-700">
+              {stock.error ??
+                "Live pricing is temporarily unavailable for this stock."}{" "}
+              Purchase details below are still accurate.
+            </p>
+          </div>
+        )}
 
         <dl className="mt-6 divide-y divide-gray-100 border-t border-gray-100">
           {rows.map((row) => (

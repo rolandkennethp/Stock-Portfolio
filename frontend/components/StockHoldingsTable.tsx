@@ -1,19 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { StockWithMetrics } from "@/lib/types";
+import { Stock } from "@/lib/types";
 import { formatCurrency, formatPercent } from "@/lib/format";
 
 interface StockHoldingsTableProps {
-  stocks: StockWithMetrics[];
+  stocks: Stock[];
   sectors: string[];
-  onSelectStock: (stock: StockWithMetrics) => void;
+  onSelectStock: (stock: Stock) => void;
+}
+
+// A stock with its return % worked out for display/sorting. The
+// backend doesn't send this (it's not one of the required fields) —
+// it's a simple derived view of two numbers we already have.
+interface StockRow extends Stock {
+  returnPercent: number | null;
 }
 
 type SortKey =
   | "name"
   | "sector"
-  | "buyPrice"
+  | "exchange"
+  | "purchasePrice"
   | "quantity"
   | "investment"
   | "cmp"
@@ -24,7 +32,8 @@ type SortKey =
 const SORTABLE_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Stock" },
   { key: "sector", label: "Sector" },
-  { key: "buyPrice", label: "Buy Price" },
+  { key: "exchange", label: "Exch." },
+  { key: "purchasePrice", label: "Purchase Price" },
   { key: "quantity", label: "Quantity" },
   { key: "investment", label: "Investment" },
   { key: "cmp", label: "CMP" },
@@ -32,6 +41,25 @@ const SORTABLE_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "gainLoss", label: "Gain/Loss" },
   { key: "returnPercent", label: "Return" },
 ];
+
+// Sorts null values (from stocks whose live data failed to load) to
+// the end regardless of sort direction, instead of throwing them at
+// the top or bottom inconsistently.
+function compareValues(
+  a: string | number | null,
+  b: string | number | null,
+  direction: "asc" | "desc",
+) {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  if (typeof a === "string" && typeof b === "string") {
+    return direction === "asc" ? a.localeCompare(b) : b.localeCompare(a);
+  }
+  return direction === "asc"
+    ? (a as number) - (b as number)
+    : (b as number) - (a as number);
+}
 
 export default function StockHoldingsTable({
   stocks,
@@ -53,9 +81,16 @@ export default function StockHoldingsTable({
   }
 
   const visibleStocks = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const rows: StockRow[] = stocks.map((stock) => ({
+      ...stock,
+      returnPercent:
+        stock.gainLoss === null || stock.investment === 0
+          ? null
+          : (stock.gainLoss / stock.investment) * 100,
+    }));
 
-    const filtered = stocks.filter((stock) => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = rows.filter((stock) => {
       const matchesSearch =
         query === "" ||
         stock.name.toLowerCase().includes(query) ||
@@ -65,28 +100,18 @@ export default function StockHoldingsTable({
       return matchesSearch && matchesSector;
     });
 
-    const sorted = [...filtered].sort((a, b) => {
-      const aValue = a[sortColumn];
-      const bValue = b[sortColumn];
-
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return sortDirection === "asc"
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue);
-      }
-      const aNum = aValue as number;
-      const bNum = bValue as number;
-      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
-    });
-
-    return sorted;
+    return [...filtered].sort((a, b) =>
+      compareValues(a[sortColumn], b[sortColumn], sortDirection),
+    );
   }, [stocks, searchQuery, sectorFilter, sortColumn, sortDirection]);
 
   return (
     <section className="mt-8">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-black">Stock holdings</h2>
+          <h2 className="text-sm font-semibold text-gray-900">
+            Stock holdings
+          </h2>
           <p className="text-xs text-gray-400">
             {visibleStocks.length} of {stocks.length} holdings
           </p>
@@ -97,12 +122,12 @@ export default function StockHoldingsTable({
             placeholder="Search stock or symbol"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className=" border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 rounded-md border  focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
           />
           <select
             value={sectorFilter}
             onChange={(e) => setSectorFilter(e.target.value)}
-            className=" py-1.5 text-sm focus:border-blue-500 rounded-md border border-gray-300 px-3  focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
           >
             <option>All sectors</option>
             {sectors.map((sector) => (
@@ -137,13 +162,15 @@ export default function StockHoldingsTable({
                 </th>
               ))}
               <th className="px-4 py-2 font-medium">P/E</th>
-              <th className="px-4 py-2 font-medium">EPS / Latest Earnings</th>
+              <th className="px-4 py-2 font-medium">Latest Earnings</th>
               <th className="px-4 py-2 font-medium">Action</th>
             </tr>
           </thead>
           <tbody>
             {visibleStocks.map((stock) => {
-              const isGain = stock.gainLoss >= 0;
+              const isGain = (stock.gainLoss ?? 0) >= 0;
+              const hasLiveData = stock.cmp !== null;
+
               return (
                 <tr
                   key={stock.symbol}
@@ -156,31 +183,52 @@ export default function StockHoldingsTable({
                     >
                       {stock.name}
                     </button>
-                    <p className="text-xs text-gray-400">{stock.symbol}</p>
+                    <p className="text-xs text-gray-400">
+                      {stock.symbol} · {stock.exchange}
+                      {stock.error && (
+                        <span className="text-amber-600">
+                          {" "}
+                          · data unavailable
+                        </span>
+                      )}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-gray-700">{stock.sector}</td>
+                  <td className="px-4 py-3 text-gray-700">{stock.exchange}</td>
                   <td className="px-4 py-3 text-gray-700">
-                    {formatCurrency(stock.buyPrice)}
+                    {formatCurrency(stock.purchasePrice)}
                   </td>
                   <td className="px-4 py-3 text-gray-700">{stock.quantity}</td>
                   <td className="px-4 py-3 text-gray-700">
                     {formatCurrency(stock.investment)}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
-                    {formatCurrency(stock.cmp)}
+                    {hasLiveData ? (
+                      formatCurrency(stock.cmp as number)
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
-                    {formatCurrency(stock.presentValue)}
+                    {stock.presentValue !== null ? (
+                      formatCurrency(stock.presentValue)
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                   <td
-                    className={`px-4 py-3 ${isGain ? "text-green-600" : "text-red-600"}`}
+                    className={`px-4 py-3 ${stock.gainLoss === null ? "text-gray-400" : isGain ? "text-green-600" : "text-red-600"}`}
                   >
-                    {formatCurrency(stock.gainLoss)}
+                    {stock.gainLoss !== null
+                      ? formatCurrency(stock.gainLoss)
+                      : "—"}
                   </td>
                   <td
-                    className={`px-4 py-3 ${isGain ? "text-green-600" : "text-red-600"}`}
+                    className={`px-4 py-3 ${stock.returnPercent === null ? "text-gray-400" : isGain ? "text-green-600" : "text-red-600"}`}
                   >
-                    {formatPercent(stock.returnPercent)}
+                    {stock.returnPercent !== null
+                      ? formatPercent(stock.returnPercent)
+                      : "—"}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
                     {stock.peRatio === null ? (
@@ -190,21 +238,10 @@ export default function StockHoldingsTable({
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
-                    {stock.eps === null ? (
-                      <>
-                        <p className="text-gray-400">EPS unavailable</p>
-                        <p className="text-xs text-gray-400">
-                          Data unavailable
-                        </p>
-                      </>
+                    {stock.latestEarnings === null ? (
+                      <span className="text-gray-400">Data unavailable</span>
                     ) : (
-                      <>
-                        <p>EPS ₹{stock.eps}</p>
-                        <p className="text-xs text-gray-400">
-                          {stock.latestEarningsQuarter} · ₹
-                          {stock.latestEarningsCr?.toLocaleString("en-IN")} Cr
-                        </p>
-                      </>
+                      stock.latestEarnings
                     )}
                   </td>
                   <td className="px-4 py-3">
